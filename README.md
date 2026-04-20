@@ -4,6 +4,7 @@
 
 例如，笔记
 
+``` txt
 The language of emotions： An analysis of a semantic field 
 Johnson-laird & Oatley, 1989, pp.81-123
 p.81	For Engl. words about emotions. There is no internal semantics for many of them.
@@ -12,7 +13,8 @@ p.96	7 main categories of emotion. e.g. basic emotion, causal emotion.
 p.96	„but“ test is used to determine the semantical relation among words.
 p.96	SHE is tired but happy. Vs She is tired but not happy. happy varies with tired.
 p.105	emotion enable a repertoire of behaviour with a minimal load on info processing.
-
+```
 
 可以被图形化为：
+
 ![](sample.png)
