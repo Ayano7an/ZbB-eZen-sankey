@@ -1,0 +1,648 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Paper Note Sankey</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg:       #f7f6f2;
+    --surface:  #ffffff;
+    --surface2: #f0eeea;
+    --border:   rgba(0,0,0,0.10);
+    --border2:  rgba(0,0,0,0.20);
+    --text:     #1a1a18;
+    --muted:    #6b6a65;
+    --radius:   8px;
+    --font: -apple-system, "Helvetica Neue", Arial, sans-serif;
+    --mono: "SF Mono", "Fira Code", "Consolas", monospace;
+  }
+
+  body {
+    font-family: var(--font);
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    padding: 24px 20px 60px;
+  }
+
+  h1 {
+    font-size: 15px;
+    font-weight: 500;
+    letter-spacing: 0.02em;
+    margin-bottom: 18px;
+    color: var(--muted);
+  }
+
+  /* ── Layout ── */
+  .layout {
+    display: grid;
+    grid-template-columns: 320px 1fr;
+    gap: 16px;
+    max-width: 1400px;
+    margin: 0 auto;
+  }
+
+  /* ── Panel ── */
+  .panel {
+    background: var(--surface);
+    border: 0.5px solid var(--border);
+    border-radius: 10px;
+    padding: 16px;
+  }
+  .panel-title {
+    font-size: 11px;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--muted);
+    margin-bottom: 12px;
+  }
+
+  /* ── Textarea ── */
+  textarea {
+    width: 100%;
+    height: 260px;
+    padding: 10px 12px;
+    font-size: 11.5px;
+    font-family: var(--mono);
+    color: var(--text);
+    background: var(--surface2);
+    border: 0.5px solid var(--border);
+    border-radius: var(--radius);
+    resize: vertical;
+    line-height: 1.6;
+    outline: none;
+  }
+  textarea:focus { border-color: var(--border2); }
+
+  /* ── Buttons ── */
+  .btn-row { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+  button {
+    padding: 6px 14px;
+    font-size: 12px;
+    font-family: var(--font);
+    color: var(--text);
+    background: var(--surface2);
+    border: 0.5px solid var(--border2);
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background 0.12s;
+  }
+  button:hover { background: #e8e6e0; }
+  button.primary {
+    background: var(--text);
+    color: var(--surface);
+    border-color: var(--text);
+  }
+  button.primary:hover { opacity: 0.82; }
+  button.export {
+    background: #268785;
+    color: #fff;
+    border-color: #1a5f5e;
+    margin-left: auto;
+  }
+  button.export:hover { background: #1a6f6d; }
+
+  /* ── Color editor ── */
+  .color-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-top: 4px;
+  }
+  .color-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .color-row label {
+    font-size: 11px;
+    color: var(--muted);
+    width: 24px;
+    text-align: right;
+    flex-shrink: 0;
+  }
+  .swatch-group {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex: 1;
+  }
+  .swatch-group span {
+    font-size: 10px;
+    color: var(--muted);
+    width: 30px;
+    flex-shrink: 0;
+  }
+  input[type="color"] {
+    width: 32px;
+    height: 24px;
+    border: 0.5px solid var(--border2);
+    border-radius: 4px;
+    padding: 1px 2px;
+    cursor: pointer;
+    background: none;
+  }
+  .color-preview {
+    display: flex;
+    gap: 3px;
+    margin-top: 10px;
+    flex-wrap: wrap;
+  }
+  .color-preview-dot {
+    width: 20px; height: 20px;
+    border-radius: 4px;
+    border: 1px solid rgba(0,0,0,0.15);
+  }
+
+  /* ── Output area ── */
+  #output {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+  }
+  .paper-card {
+    background: var(--surface);
+    border: 0.5px solid var(--border);
+    border-radius: 10px;
+    overflow: hidden;
+  }
+  .paper-card svg { display: block; width: 100%; }
+  .card-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    border-top: 0.5px solid var(--border);
+    background: var(--surface2);
+  }
+  .card-label { font-size: 11px; color: var(--muted); flex: 1; }
+  .card-actions button { font-size: 11px; padding: 4px 10px; }
+
+  .status {
+    font-size: 11px;
+    color: var(--muted);
+    margin-top: 8px;
+    min-height: 16px;
+  }
+
+  /* ── Format note ── */
+  .format-hint {
+    font-size: 10.5px;
+    color: var(--muted);
+    line-height: 1.7;
+    margin-top: 10px;
+    padding: 8px 10px;
+    background: var(--surface2);
+    border-radius: 6px;
+    border-left: 2px solid #66BAB7;
+  }
+  .format-hint code {
+    font-family: var(--mono);
+    font-size: 10px;
+    background: rgba(0,0,0,0.06);
+    padding: 0 3px;
+    border-radius: 3px;
+  }
+</style>
+</head>
+<body>
+
+<h1>Paper Note Sankey</h1>
+
+<div class="layout">
+
+  <!-- LEFT: input + color editor -->
+  <div style="display:flex;flex-direction:column;gap:12px;">
+
+    <div class="panel">
+      <div class="panel-title">笔记输入</div>
+      <textarea id="input" spellcheck="false"></textarea>
+      <div class="btn-row">
+        <button class="primary" onclick="renderAll()">生成图</button>
+        <button onclick="loadExample()">载入示例</button>
+        <button id="cjk-btn" onclick="toggleCJK()" title="切换字符宽度估算模式（中/日文内容请开启）">中文模式：关</button>
+        <button class="export" onclick="exportAllPNG()">导出全部 PNG</button>
+      </div>
+      <div class="status" id="status"></div>
+      <div class="format-hint">
+        第1行：标题<br>
+        第2行：作者, 年份, <code>pp.X-Y</code><br>
+        第3行起：<code>p.N</code> 笔记内容<br>
+        多篇论文之间用空行分隔
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-title">配色方案（最多10色）</div>
+      <div class="color-grid" id="color-grid"></div>
+      <div class="color-preview" id="color-preview"></div>
+      <div class="btn-row" style="margin-top:10px;">
+        <button onclick="resetColors()">还原默认</button>
+        <button onclick="renderAll()">应用配色</button>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- RIGHT: output -->
+  <div>
+    <div id="output">
+      <div style="padding:40px;text-align:center;color:var(--muted);font-size:13px;">
+        粘贴笔记后点击「生成图」
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- hidden canvas for PNG export -->
+<canvas id="export-canvas" style="display:none;"></canvas>
+
+<script>
+// ─────────────────────────────────────────────────────────
+// DEFAULT COLORS — 日本传统色 蓝绿段
+// Each: { fill, stroke, text }
+// ─────────────────────────────────────────────────────────
+const DEFAULT_COLORS = [
+  { fill:'#C8E4E3', stroke:'#66BAB7', text:'#1A4A49' },  // 水浅葱
+  { fill:'#C0ECEF', stroke:'#78C2C4', text:'#1A4A4B' },  // 白群
+  { fill:'#B8DEE8', stroke:'#6699A1', text:'#1A3840' },  // 錆浅葱
+  { fill:'#B4D4D0', stroke:'#4F726C', text:'#162422' },  // 沈香茶
+  { fill:'#C4D8D6', stroke:'#405B55', text:'#121E1C' },  // 錆鉄御納戸
+  { fill:'#BDD8D8', stroke:'#376B6D', text:'#102223' },  // 御召茶
+  { fill:'#C2E0DF', stroke:'#268785', text:'#0C2C2B' },  // 青碧
+  { fill:'#BAD8D4', stroke:'#305A56', text:'#0E1E1C' },  // 高麗納戸
+  { fill:'#B8E0E8', stroke:'#77969A', text:'#1A3034' },  // 深川鼠
+  { fill:'#C6ECEB', stroke:'#00AA90', text:'#003830' },  // 青緑
+];
+
+// Names for UI labels
+const COLOR_NAMES = [
+  '水浅葱','白群','錆浅葱','沈香茶','錆鉄納戸','御召茶','青碧','高麗納戸','深川鼠','青緑'
+];
+
+let PAGE_COLORS = DEFAULT_COLORS.map(c => ({...c}));
+
+// ── Build color editor UI ──
+function buildColorEditor() {
+  const grid = document.getElementById('color-grid');
+  grid.innerHTML = '';
+  PAGE_COLORS.forEach((c, i) => {
+    const row = document.createElement('div');
+    row.className = 'color-row';
+    row.innerHTML = `
+      <label>${i+1}</label>
+      <div class="swatch-group">
+        <span style="width:56px;font-size:10px;color:var(--muted);">${COLOR_NAMES[i]||''}</span>
+        <span>填充</span>
+        <input type="color" id="c${i}-fill" value="${c.fill}" oninput="updateColor(${i},'fill',this.value)">
+        <span>边框</span>
+        <input type="color" id="c${i}-stroke" value="${c.stroke}" oninput="updateColor(${i},'stroke',this.value)">
+        <span>文字</span>
+        <input type="color" id="c${i}-text" value="${c.text}" oninput="updateColor(${i},'text',this.value)">
+      </div>`;
+    grid.appendChild(row);
+  });
+  updatePreview();
+}
+
+function updateColor(i, key, val) {
+  PAGE_COLORS[i][key] = val;
+  updatePreview();
+}
+
+function updatePreview() {
+  const prev = document.getElementById('color-preview');
+  prev.innerHTML = PAGE_COLORS.map(c =>
+    `<div class="color-preview-dot" style="background:${c.fill};border-color:${c.stroke};"></div>`
+  ).join('');
+}
+
+function resetColors() {
+  PAGE_COLORS = DEFAULT_COLORS.map(c => ({...c}));
+  buildColorEditor();
+  renderAll();
+}
+
+// ─────────────────────────────────────────────────────────
+// PARSING
+// ─────────────────────────────────────────────────────────
+const EXAMPLE = `The language of emotions: An analysis of a semantic field
+Johnson-Laird & Oatley, 1989, pp.81-123
+p.81 For Engl. words about emotions. There is no internal semantics for many of them.
+p.94 A basic concept can define a semantic field on which many other words depend.
+p.96 7 main categories of emotion. e.g. basic emotion, causal emotion.
+p.96 "but" test is used to determine the semantical relation among words.
+p.96 SHE is tired but happy. Vs She is tired but not happy. happy varies with tired.
+p.105 emotion enable a repertoire of behaviour with a minimal load on info processing.
+
+Chap. 4 How Metaphors Create Categories
+Sam Glucksberg, 2008, pp.67-83
+p.67 Metaphors, considered as false categorical assertions, must be treated as similes.
+p.67 Traditional pragmatic view of metaphor, in eyes of Christopher Boone.
+p.67 Literally false assertions violate one of Grice's conversational maxims.
+p.68 Searle: for a literally defective utterance, look for a meaning differing from sentence.
+p.69 When X is Y is literally false, it can be converted as a true simile, X is like Y.
+p.74 Gentner and her colleagues argue, simile and metaphor are different.
+p.75 Novel metaphor are invariably understood as a comparison.
+p.75 With repeated use, metaphor become conventionalized, understood as category.
+
+Metaphor, Imagination, and Simulation
+Jr. Raymond & Matlock (2008). pp.161-176
+p.167 Real & imagined bodily movement enhance simulations in metaphor comprehension.`;
+
+function loadExample() {
+  document.getElementById('input').value = EXAMPLE;
+  renderAll();
+}
+
+function parsePapers(raw) {
+  return raw.trim().split(/\n\s*\n+/).filter(b => b.trim()).map(block => {
+    const lines = block.trim().split('\n').map(l => l.trim()).filter(Boolean);
+    if (lines.length < 3) return null;
+    const title = lines[0], meta = lines[1];
+    const rm = meta.match(/pp\.(\d+)[-–](\d+)/);
+    if (!rm) return null;
+    const notes = [];
+    for (let i = 2; i < lines.length; i++) {
+      const m = lines[i].match(/^p\.(\d+)\s+(.+)/);
+      if (m) notes.push({ page: +m[1], text: m[2] });
+    }
+    return { title, meta, pageStart: +rm[1], pageEnd: +rm[2], notes };
+  }).filter(Boolean);
+}
+
+// ─────────────────────────────────────────────────────────
+// SVG GENERATION
+// Fixed output size: 1000 × 680 SVG units (viewBox)
+// ─────────────────────────────────────────────────────────
+const VW = 1000, VH = 680;
+
+function esc(s) {
+  return String(s)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ── CJK mode ──
+let CJK_MODE = false;
+
+function toggleCJK() {
+  CJK_MODE = !CJK_MODE;
+  const btn = document.getElementById('cjk-btn');
+  btn.textContent = CJK_MODE ? '中文模式：开' : '中文模式：关';
+  btn.style.background  = CJK_MODE ? '#268785' : '';
+  btn.style.color       = CJK_MODE ? '#fff'    : '';
+  btn.style.borderColor = CJK_MODE ? '#1a5f5e' : '';
+  renderAll();
+}
+
+function trunc(str, availW, fs) {
+  const isCJK = c => /[\u3000-\u9fff\uac00-\ud7af\uf900-\ufaff]/.test(c);
+  // CJK mode: full-width CJK ≈ fs×1.0, latin ≈ fs×0.58
+  // Latin mode: all chars ≈ fs×0.52
+  const cw = c => CJK_MODE
+    ? (isCJK(c) ? fs * 1.0 : fs * 0.58)
+    : fs * 0.52;
+  const ellipsisW = CJK_MODE ? fs * 1.0 : fs * 0.52;
+  let w = 0;
+  for (let i = 0; i < str.length; i++) {
+    w += cw(str[i]);
+    if (w + ellipsisW > availW && i < str.length - 1) {
+      return str.slice(0, i) + '…';
+    }
+  }
+  return str;
+}
+
+function makeSVG(paper) {
+  const { title, meta, pageStart, pageEnd, notes } = paper;
+  const totalPages = pageEnd - pageStart + 1;
+  const ROW_MAX = 10;
+
+  const TITLE_H = 58, PAD_TOP = TITLE_H + 12, PAD_BOT = 28;
+  const BODY_H  = VH - PAD_TOP - PAD_BOT;  // fixed: 680 - 70 - 28 = 582
+
+  const L_X = 28, L_W = 52;
+  const R_X = 190, R_W = VW - R_X - 20;   // 790
+  const CX  = (L_X + L_W + R_X) / 2;
+
+  const U_L = Math.max(5, (BODY_H - (totalPages - 1) * 0.6) / totalPages);
+  const U_R = Math.floor((BODY_H - (ROW_MAX - 1) * 4) / ROW_MAX);
+
+  const pageY = p => PAD_TOP + (p - pageStart) * (U_L + 0.6);
+  const noteY = i => PAD_TOP + i * (U_R + 4);
+
+  const orderedPages = [...new Set(notes.map(n => n.page))].sort((a, b) => a - b);
+  const pageColorMap = {};
+  orderedPages.forEach((p, i) => {
+    pageColorMap[p] = PAGE_COLORS[i % PAGE_COLORS.length];
+  });
+
+  const noteSlots = notes.slice(0, ROW_MAX).map((n, i) => ({ ...n, slot: i }));
+  const slotsByPage = {};
+  noteSlots.forEach(ns => {
+    (slotsByPage[ns.page] = slotsByPage[ns.page] || []).push(ns.slot);
+  });
+
+  // inline font-face so PNG export works without network
+  let s = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${VW} ${VH}" width="${VW}" height="${VH}">`;
+
+  // white background (needed for PNG)
+  s += `<rect width="${VW}" height="${VH}" fill="#ffffff"/>`;
+
+  // title
+  s += `<text font-family="-apple-system,"PingFang SC","Hiragino Sans","Yu Gothic","Microsoft YaHei","Helvetica Neue",Arial,sans-serif"
+    font-size="17" font-weight="500" fill="#1a1a18"
+    x="${VW/2}" y="20" text-anchor="middle" dominant-baseline="central"
+    >${esc(trunc(title, VW - 80, 17))}</text>`;
+  s += `<text font-family="-apple-system,"PingFang SC","Hiragino Sans","Yu Gothic","Microsoft YaHei","Helvetica Neue",Arial,sans-serif"
+    font-size="14" fill="#6b6a65"
+    x="${VW/2}" y="42" text-anchor="middle" dominant-baseline="central"
+    >${esc(trunc(meta, VW - 80, 14))}</text>`;
+
+  // legend
+  orderedPages.forEach((p, i) => {
+    if (i > 9) return;
+    const c = pageColorMap[p];
+    const lx = 30 + i * 32;
+    s += `<rect x="${lx-12}" y="${TITLE_H-16}" width="24" height="10" rx="2"
+      fill="${c.fill}" stroke="${c.stroke}" stroke-width="0.8"/>`;
+    s += `<text font-family="-apple-system,"PingFang SC","Hiragino Sans","Yu Gothic","Microsoft YaHei","Helvetica Neue",Arial,sans-serif"
+      font-size="10" fill="${c.stroke}"
+      x="${lx}" y="${TITLE_H-4}" text-anchor="middle">${p}</text>`;
+  });
+
+  // divider
+  s += `<line x1="20" y1="${TITLE_H}" x2="${VW-20}" y2="${TITLE_H}"
+    stroke="rgba(0,0,0,0.10)" stroke-width="0.5"/>`;
+
+  // L: all pages
+  for (let p = pageStart; p <= pageEnd; p++) {
+    const y = pageY(p);
+    const h = Math.max(U_L, 3);
+    const c = pageColorMap[p];
+    if (c) {
+      s += `<rect x="${L_X}" y="${y}" width="${L_W}" height="${h}" rx="2"
+        fill="${c.fill}" stroke="${c.stroke}" stroke-width="0.7"/>`;
+      if (U_L >= 12) {
+        s += `<text font-family="-apple-system,"PingFang SC","Hiragino Sans","Yu Gothic","Microsoft YaHei","Helvetica Neue",Arial,sans-serif"
+          font-size="12" fill="${c.text}"
+          x="${L_X + L_W/2}" y="${y + U_L/2}"
+          text-anchor="middle" dominant-baseline="central">${p}</text>`;
+      }
+    } else {
+      s += `<rect x="${L_X}" y="${y}" width="${L_W}" height="${h}" rx="2"
+        fill="#f0eeea" stroke="rgba(0,0,0,0.10)" stroke-width="0.5" opacity="0.5"/>`;
+    }
+  }
+
+  // flows
+  Object.entries(slotsByPage).forEach(([page, slots]) => {
+    const p = +page, c = pageColorMap[p];
+    if (!c) return;
+    const lY0 = pageY(p), lY1 = lY0 + U_L;
+    const rY0 = noteY(Math.min(...slots));
+    const rY1 = noteY(Math.max(...slots)) + U_R;
+    s += `<path d="M${L_X+L_W},${lY0} C${CX},${lY0} ${CX},${rY0} ${R_X},${rY0}
+      L${R_X},${rY1} C${CX},${rY1} ${CX},${lY1} ${L_X+L_W},${lY1} Z"
+      fill="${c.stroke}" opacity="0.13" stroke="${c.stroke}" stroke-width="0.4"/>`;
+  });
+
+  // R: note rows
+  for (let i = 0; i < ROW_MAX; i++) {
+    const y = noteY(i);
+    const ns = noteSlots[i];
+    if (ns) {
+      const c = pageColorMap[ns.page];
+      const label = trunc(ns.text, R_W - 24, 16);
+      s += `<rect x="${R_X}" y="${y}" width="${R_W}" height="${U_R}" rx="4"
+        fill="${c.fill}" stroke="${c.stroke}" stroke-width="0.7"/>`;
+      s += `<text font-family="-apple-system,"PingFang SC","Hiragino Sans","Yu Gothic","Microsoft YaHei","Helvetica Neue",Arial,sans-serif"
+        font-size="16" fill="${c.text}"
+        x="${R_X+12}" y="${y + U_R/2}" dominant-baseline="central"
+        >${esc(label)}</text>`;
+    } else {
+      s += `<rect x="${R_X}" y="${y}" width="${R_W}" height="${U_R}" rx="4"
+        fill="none" stroke="rgba(0,0,0,0.10)" stroke-width="0.5"
+        stroke-dasharray="4 4" opacity="0.4"/>`;
+    }
+  }
+
+  // footer stats
+  const pw = Object.keys(slotsByPage).length;
+  const pct = Math.round(pw / totalPages * 100);
+  s += `<text font-family="-apple-system,"PingFang SC","Hiragino Sans","Yu Gothic","Microsoft YaHei","Helvetica Neue",Arial,sans-serif"
+    font-size="12" fill="#6b6a65"
+    x="${VW/2}" y="${VH - 10}" text-anchor="middle"
+    >${totalPages}页跨度 · ${pw}页有笔记（${pct}%）· ${Math.min(notes.length, ROW_MAX)}条笔记</text>`;
+
+  s += `</svg>`;
+  return s;
+}
+
+// ─────────────────────────────────────────────────────────
+// RENDER TO PAGE
+// ─────────────────────────────────────────────────────────
+let currentPapers = [];
+
+function renderAll() {
+  const raw = document.getElementById('input').value;
+  currentPapers = parsePapers(raw);
+  const out = document.getElementById('output');
+  out.innerHTML = '';
+
+  if (!currentPapers.length) {
+    out.innerHTML = '<div style="padding:40px;text-align:center;color:var(--muted);font-size:13px;">未能解析，请检查格式。</div>';
+    setStatus('');
+    return;
+  }
+
+  setStatus('渲染中…');
+  // render sequentially so canvas is not reused concurrently
+  (async () => {
+    for (let idx = 0; idx < currentPapers.length; idx++) {
+      const paper = currentPapers[idx];
+      const svgStr = makeSVG(paper);
+      const dataURL = await svgToDataURL(svgStr);
+
+      const card = document.createElement('div');
+      card.className = 'paper-card';
+
+      // show as <img> so Eagle / right-click-save works directly
+      const img = document.createElement('img');
+      img.src = dataURL;
+      img.style.cssText = 'display:block;width:100%;';
+      img.alt = paper.title;
+      card.appendChild(img);
+
+      const actions = document.createElement('div');
+      actions.className = 'card-actions';
+      const slug = paper.title.slice(0, 40).replace(/[^a-zA-Z0-9\u4e00-\u9fff]+/g, '_');
+      actions.innerHTML = `
+        <span class="card-label">${paper.title.slice(0, 60)}${paper.title.length > 60 ? '…' : ''}</span>
+        <a href="${dataURL}" download="${slug}.png">
+          <button>下载 PNG</button>
+        </a>`;
+      card.appendChild(actions);
+      out.appendChild(card);
+    }
+    setStatus(`已生成 ${currentPapers.length} 张图 · ${VW*2}×${VH*2}px · 可直接右键保存或用 Eagle 抓取`);
+  })();
+}
+
+// ─────────────────────────────────────────────────────────
+// PNG EXPORT
+// ─────────────────────────────────────────────────────────
+// SVG → PNG data URL (2× retina, fixed VW×VH)
+// ─────────────────────────────────────────────────────────
+function svgToDataURL(svgStr) {
+  return new Promise((resolve) => {
+    const canvas = document.getElementById('export-canvas');
+    const SCALE = 2;
+    canvas.width  = VW * SCALE;
+    canvas.height = VH * SCALE;
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.scale(SCALE, SCALE);
+
+    const blob = new Blob([svgStr], { type: 'image/svg+xml;charset=utf-8' });
+    const url  = URL.createObjectURL(blob);
+    const img  = new Image();
+    img.onload = () => {
+      ctx.drawImage(img, 0, 0, VW, VH);
+      URL.revokeObjectURL(url);
+      // reset transform for next call
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      resolve(canvas.toDataURL('image/png'));
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); resolve(''); };
+    img.src = url;
+  });
+}
+
+async function exportAllPNG() {
+  if (!currentPapers.length) { setStatus('请先生成图'); return; }
+  // trigger download for each card's <a> element
+  const links = document.querySelectorAll('.card-actions a');
+  links.forEach(a => a.click());
+  setStatus(`已触发 ${links.length} 个下载`);
+}
+
+function setStatus(msg) {
+  document.getElementById('status').textContent = msg;
+}
+
+// ─────────────────────────────────────────────────────────
+// INIT
+// ─────────────────────────────────────────────────────────
+buildColorEditor();
+document.getElementById('input').value = EXAMPLE;
+renderAll();
+</script>
+</body>
+</html>
