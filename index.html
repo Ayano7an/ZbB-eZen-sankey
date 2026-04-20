@@ -465,11 +465,11 @@ function makeSVG(paper) {
   s += `<rect width="${VW}" height="${VH}" fill="#ffffff"/>`;
 
   // title
-  s += `<text font-family="-apple-system,"PingFang SC","Hiragino Sans","Yu Gothic","Microsoft YaHei","Helvetica Neue",Arial,sans-serif"
+  s += `<text font-family="-apple-system, 'PingFang SC', 'Hiragino Sans', 'Yu Gothic', 'Microsoft YaHei', 'Helvetica Neue', Arial, sans-serif"
     font-size="17" font-weight="500" fill="#1a1a18"
     x="${VW/2}" y="20" text-anchor="middle" dominant-baseline="central"
     >${esc(trunc(title, VW - 80, 17))}</text>`;
-  s += `<text font-family="-apple-system,"PingFang SC","Hiragino Sans","Yu Gothic","Microsoft YaHei","Helvetica Neue",Arial,sans-serif"
+  s += `<text font-family="-apple-system, 'PingFang SC', 'Hiragino Sans', 'Yu Gothic', 'Microsoft YaHei', 'Helvetica Neue', Arial, sans-serif"
     font-size="14" fill="#6b6a65"
     x="${VW/2}" y="42" text-anchor="middle" dominant-baseline="central"
     >${esc(trunc(meta, VW - 80, 14))}</text>`;
@@ -481,7 +481,7 @@ function makeSVG(paper) {
     const lx = 30 + i * 32;
     s += `<rect x="${lx-12}" y="${TITLE_H-16}" width="24" height="10" rx="2"
       fill="${c.fill}" stroke="${c.stroke}" stroke-width="0.8"/>`;
-    s += `<text font-family="-apple-system,"PingFang SC","Hiragino Sans","Yu Gothic","Microsoft YaHei","Helvetica Neue",Arial,sans-serif"
+    s += `<text font-family="-apple-system, 'PingFang SC', 'Hiragino Sans', 'Yu Gothic', 'Microsoft YaHei', 'Helvetica Neue', Arial, sans-serif"
       font-size="10" fill="${c.stroke}"
       x="${lx}" y="${TITLE_H-4}" text-anchor="middle">${p}</text>`;
   });
@@ -499,7 +499,7 @@ function makeSVG(paper) {
       s += `<rect x="${L_X}" y="${y}" width="${L_W}" height="${h}" rx="2"
         fill="${c.fill}" stroke="${c.stroke}" stroke-width="0.7"/>`;
       if (U_L >= 12) {
-        s += `<text font-family="-apple-system,"PingFang SC","Hiragino Sans","Yu Gothic","Microsoft YaHei","Helvetica Neue",Arial,sans-serif"
+        s += `<text font-family="-apple-system, 'PingFang SC', 'Hiragino Sans', 'Yu Gothic', 'Microsoft YaHei', 'Helvetica Neue', Arial, sans-serif"
           font-size="12" fill="${c.text}"
           x="${L_X + L_W/2}" y="${y + U_L/2}"
           text-anchor="middle" dominant-baseline="central">${p}</text>`;
@@ -531,7 +531,7 @@ function makeSVG(paper) {
       const label = trunc(ns.text, R_W - 24, 16);
       s += `<rect x="${R_X}" y="${y}" width="${R_W}" height="${U_R}" rx="4"
         fill="${c.fill}" stroke="${c.stroke}" stroke-width="0.7"/>`;
-      s += `<text font-family="-apple-system,"PingFang SC","Hiragino Sans","Yu Gothic","Microsoft YaHei","Helvetica Neue",Arial,sans-serif"
+      s += `<text font-family="-apple-system, 'PingFang SC', 'Hiragino Sans', 'Yu Gothic', 'Microsoft YaHei', 'Helvetica Neue', Arial, sans-serif"
         font-size="16" fill="${c.text}"
         x="${R_X+12}" y="${y + U_R/2}" dominant-baseline="central"
         >${esc(label)}</text>`;
@@ -545,7 +545,7 @@ function makeSVG(paper) {
   // footer stats
   const pw = Object.keys(slotsByPage).length;
   const pct = Math.round(pw / totalPages * 100);
-  s += `<text font-family="-apple-system,"PingFang SC","Hiragino Sans","Yu Gothic","Microsoft YaHei","Helvetica Neue",Arial,sans-serif"
+  s += `<text font-family="-apple-system, 'PingFang SC', 'Hiragino Sans', 'Yu Gothic', 'Microsoft YaHei', 'Helvetica Neue', Arial, sans-serif"
     font-size="12" fill="#6b6a65"
     x="${VW/2}" y="${VH - 10}" text-anchor="middle"
     >${totalPages}页跨度 · ${pw}页有笔记（${pct}%）· ${Math.min(notes.length, ROW_MAX)}条笔记</text>`;
@@ -730,7 +730,7 @@ renderAll();
     banner.style.background = '#C8E4E3';
     banner.style.borderColor = '#268785';
     banner.style.color = '#0C2C2B';
-    msg.textContent = `✓ 本地服务器运行中 (localhost:${PORT.toString().slice(-4)||8765}) · PNG 将保存到 ./output_png/`;
+    msg.textContent = `✓ 本地服务器运行中 (localhost:8765) · PNG 将保存到 ./output_png/`;
   } catch {
     dot.style.background = '#BA7517';
     msg.innerHTML = '本地服务器未启动 · 导出 PNG 请先运行：<code style="font-family:monospace;background:rgba(0,0,0,0.08);padding:1px 5px;border-radius:3px;">python3 server.py</code> · 或直接下载 ZIP（http 环境下可用）';
