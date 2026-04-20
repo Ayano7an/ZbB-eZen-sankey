@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Paper Note Sankey</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -212,6 +213,14 @@
 <body>
 
 <h1>Paper Note Sankey</h1>
+<div id="server-banner" style="
+  font-size:11px; padding:8px 12px; border-radius:6px; margin-bottom:14px;
+  background:#faeeda; border:0.5px solid #BA7517; color:#633806;
+  display:flex; align-items:center; gap:8px; max-width:1400px; margin-left:auto; margin-right:auto;
+">
+  <span id="server-dot" style="width:8px;height:8px;border-radius:50%;background:#BA7517;flex-shrink:0;"></span>
+  <span id="server-msg">检测本地服务器中…</span>
+</div>
 
 <div class="layout">
 
@@ -225,7 +234,7 @@
         <button class="primary" onclick="renderAll()">生成图</button>
         <button onclick="loadExample()">载入示例</button>
         <button id="cjk-btn" onclick="toggleCJK()" title="切换字符宽度估算模式（中/日文内容请开启）">中文模式：关</button>
-        <button class="export" onclick="exportAllPNG()">导出全部 PNG</button>
+        <button class="export" onclick="exportAllPNG()">导出全部 ZIP</button>
       </div>
       <div class="status" id="status"></div>
       <div class="format-hint">
@@ -546,13 +555,16 @@ function makeSVG(paper) {
 }
 
 // ─────────────────────────────────────────────────────────
-// RENDER TO PAGE
+// RENDER TO PAGE — SVG displayed inline (works on file://)
+// Eagle can grab inline SVGs; right-click → save also works
 // ─────────────────────────────────────────────────────────
 let currentPapers = [];
+let currentSVGs   = [];   // keep SVG strings for export
 
 function renderAll() {
   const raw = document.getElementById('input').value;
   currentPapers = parsePapers(raw);
+  currentSVGs   = [];
   const out = document.getElementById('output');
   out.innerHTML = '';
 
@@ -562,46 +574,53 @@ function renderAll() {
     return;
   }
 
-  setStatus('渲染中…');
-  // render sequentially so canvas is not reused concurrently
-  (async () => {
-    for (let idx = 0; idx < currentPapers.length; idx++) {
-      const paper = currentPapers[idx];
-      const svgStr = makeSVG(paper);
-      const dataURL = await svgToDataURL(svgStr);
+  currentPapers.forEach((paper, idx) => {
+    const svgStr = makeSVG(paper);
+    currentSVGs.push(svgStr);
 
-      const card = document.createElement('div');
-      card.className = 'paper-card';
+    const card = document.createElement('div');
+    card.className = 'paper-card';
 
-      // show as <img> so Eagle / right-click-save works directly
-      const img = document.createElement('img');
-      img.src = dataURL;
-      img.style.cssText = 'display:block;width:100%;';
-      img.alt = paper.title;
-      card.appendChild(img);
+    // Inline SVG — visible immediately, no canvas/CORS needed
+    // Wrap in a div so width:100% scales correctly
+    const wrap = document.createElement('div');
+    wrap.style.cssText = 'width:100%;line-height:0;';
+    wrap.innerHTML = svgStr;
+    wrap.querySelector('svg').style.cssText = 'width:100%;height:auto;display:block;';
+    card.appendChild(wrap);
 
-      const actions = document.createElement('div');
-      actions.className = 'card-actions';
-      const slug = paper.title.slice(0, 40).replace(/[^a-zA-Z0-9\u4e00-\u9fff]+/g, '_');
-      actions.innerHTML = `
-        <span class="card-label">${paper.title.slice(0, 60)}${paper.title.length > 60 ? '…' : ''}</span>
-        <a href="${dataURL}" download="${slug}.png">
-          <button>下载 PNG</button>
-        </a>`;
-      card.appendChild(actions);
-      out.appendChild(card);
-    }
-    setStatus(`已生成 ${currentPapers.length} 张图 · ${VW*2}×${VH*2}px · 可直接右键保存或用 Eagle 抓取`);
-  })();
+    const actions = document.createElement('div');
+    actions.className = 'card-actions';
+    const slug = paper.title.slice(0, 40).replace(/[^a-zA-Z0-9\u4e00-\u9fff]+/g, '_');
+    actions.innerHTML = `
+      <span class="card-label">${paper.title.slice(0, 60)}${paper.title.length > 60 ? '…' : ''}</span>
+      <button onclick="exportOnePNG(${idx},'${slug}')">下载 PNG</button>`;
+    card.appendChild(actions);
+    out.appendChild(card);
+  });
+
+  setStatus(`已生成 ${currentPapers.length} 张图 · Eagle 可直接抓取 · 或点「下载 PNG」/「导出全部 ZIP」`);
 }
 
 // ─────────────────────────────────────────────────────────
 // PNG EXPORT
+// Strategy A (preferred): POST SVGs to local Python server → cairosvg → PNG files
+// Strategy B (fallback):  Canvas toBlob — works on http(s), fails on file://
 // ─────────────────────────────────────────────────────────
-// SVG → PNG data URL (2× retina, fixed VW×VH)
-// ─────────────────────────────────────────────────────────
-function svgToDataURL(svgStr) {
-  return new Promise((resolve) => {
+const SERVER = 'http://localhost:8765';
+
+function triggerDownload(blob, filename) {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+}
+
+// Canvas fallback (http/https only)
+function svgToPNGBlobCanvas(svgStr) {
+  return new Promise((resolve, reject) => {
     const canvas = document.getElementById('export-canvas');
     const SCALE = 2;
     canvas.width  = VW * SCALE;
@@ -609,28 +628,84 @@ function svgToDataURL(svgStr) {
     const ctx = canvas.getContext('2d');
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     ctx.scale(SCALE, SCALE);
-
     const blob = new Blob([svgStr], { type: 'image/svg+xml;charset=utf-8' });
     const url  = URL.createObjectURL(blob);
     const img  = new Image();
     img.onload = () => {
       ctx.drawImage(img, 0, 0, VW, VH);
       URL.revokeObjectURL(url);
-      // reset transform for next call
       ctx.setTransform(1, 0, 0, 1, 0, 0);
-      resolve(canvas.toDataURL('image/png'));
+      canvas.toBlob(b => b ? resolve(b) : reject('toBlob failed'), 'image/png');
     };
-    img.onerror = () => { URL.revokeObjectURL(url); resolve(''); };
+    img.onerror = () => { URL.revokeObjectURL(url); reject('img load failed'); };
     img.src = url;
   });
 }
 
+// Send all SVGs to Python server; it writes PNGs to ./output_png/
+async function exportViaServer(indices) {
+  const payload = indices.map(i => ({
+    filename: `${String(i+1).padStart(2,'0')}_${currentPapers[i].title.slice(0,40).replace(/[^a-zA-Z0-9\u4e00-\u9fff]+/g,'_')}`,
+    svg: currentSVGs[i]
+  }));
+  const res = await fetch(`${SERVER}/export`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ svgs: payload })
+  });
+  return await res.json();
+}
+
+async function exportOnePNG(idx, slug) {
+  if (!currentSVGs[idx]) return;
+  setStatus('导出中…');
+  // Try server first
+  try {
+    const result = await exportViaServer([idx]);
+    if (result.error) throw new Error(result.error);
+    setStatus(`✓ 已保存到 ${result.dir}/${result.saved[0]}`);
+    return;
+  } catch(e) { /* server not running, fall through */ }
+  // Canvas fallback
+  try {
+    const pngBlob = await svgToPNGBlobCanvas(currentSVGs[idx]);
+    triggerDownload(pngBlob, (slug || `paper_${idx+1}`) + '.png');
+    setStatus('✓ 已下载 PNG');
+  } catch(e) {
+    setStatus('⚠ 请运行 python3 server.py 后重试（file:// 协议无法直接导出 PNG）');
+  }
+}
+
 async function exportAllPNG() {
   if (!currentPapers.length) { setStatus('请先生成图'); return; }
-  // trigger download for each card's <a> element
-  const links = document.querySelectorAll('.card-actions a');
-  links.forEach(a => a.click());
-  setStatus(`已触发 ${links.length} 个下载`);
+  const indices = currentPapers.map((_, i) => i);
+  setStatus('导出中…');
+  // Try server first (all in one POST)
+  try {
+    const result = await exportViaServer(indices);
+    if (result.error) throw new Error(result.error);
+    setStatus(`✓ 已保存 ${result.saved.length} 张 PNG → ${result.dir}`);
+    return;
+  } catch(e) { /* fall through to canvas+zip */ }
+  // Canvas + JSZip fallback
+  try {
+    const zip = new JSZip();
+    for (let i = 0; i < currentSVGs.length; i++) {
+      const slug = currentPapers[i].title.slice(0,40).replace(/[^a-zA-Z0-9\u4e00-\u9fff]+/g,'_');
+      setStatus(`打包中 ${i+1}/${currentSVGs.length}…`);
+      try {
+        const buf = await (await svgToPNGBlobCanvas(currentSVGs[i])).arrayBuffer();
+        zip.file(`${String(i+1).padStart(2,'0')}_${slug}.png`, buf);
+      } catch {
+        zip.file(`${String(i+1).padStart(2,'0')}_${slug}.svg`, currentSVGs[i]);
+      }
+    }
+    const zipBlob = await zip.generateAsync({ type:'blob' });
+    triggerDownload(zipBlob, 'paper_sankey_notes.zip');
+    setStatus(`✓ 已下载 paper_sankey_notes.zip（${currentSVGs.length} 张）`);
+  } catch(e) {
+    setStatus('⚠ 请运行 python3 server.py 后重试');
+  }
 }
 
 function setStatus(msg) {
@@ -643,6 +718,24 @@ function setStatus(msg) {
 buildColorEditor();
 document.getElementById('input').value = EXAMPLE;
 renderAll();
+
+// Check if local Python server is running
+(async () => {
+  const dot = document.getElementById('server-dot');
+  const msg = document.getElementById('server-msg');
+  const banner = document.getElementById('server-banner');
+  try {
+    const r = await fetch(`${SERVER}/`, { method:'HEAD', signal: AbortSignal.timeout(800) });
+    dot.style.background = '#268785';
+    banner.style.background = '#C8E4E3';
+    banner.style.borderColor = '#268785';
+    banner.style.color = '#0C2C2B';
+    msg.textContent = `✓ 本地服务器运行中 (localhost:${PORT.toString().slice(-4)||8765}) · PNG 将保存到 ./output_png/`;
+  } catch {
+    dot.style.background = '#BA7517';
+    msg.innerHTML = '本地服务器未启动 · 导出 PNG 请先运行：<code style="font-family:monospace;background:rgba(0,0,0,0.08);padding:1px 5px;border-radius:3px;">python3 server.py</code> · 或直接下载 ZIP（http 环境下可用）';
+  }
+})();
 </script>
 </body>
 </html>
